@@ -25,6 +25,11 @@ option(TRITON_BUILD_UT "Build C++ Triton Unit Tests" ON)
 option(TRITON_BUILD_WITH_CCACHE "Build with ccache (if available)" ON)
 set(TRITON_CODEGEN_BACKENDS "" CACHE STRING "Enable different codegen backends")
 
+set(IS_CPU_ONLY_BUILD 0)
+if(TRITON_CODEGEN_BACKENDS STREQUAL "cpu")
+  set(IS_CPU_ONLY_BUILD 1)
+endif()
+
 if(TRITON_BUILD_WITH_CCACHE)
   find_program(CCACHE_PROGRAM ccache)
   if(CCACHE_PROGRAM)
@@ -202,12 +207,14 @@ if(TRITON_BUILD_PYTHON_MODULE)
     add_subdirectory(third_party/${CODEGEN_BACKEND})
   endforeach()
 
-  if (TRITON_BUILD_PROTON)
-    add_subdirectory(third_party/proton)
+  if(NOT IS_CPU_ONLY_BUILD)
+    if (TRITON_BUILD_PROTON)
+      add_subdirectory(third_party/proton)
+    endif()
+    # We always build proton dialect
+    list(APPEND TRITON_PLUGIN_NAMES "proton")
+    add_subdirectory(third_party/proton/dialect)
   endif()
-  # We always build proton dialect
-  list(APPEND TRITON_PLUGIN_NAMES "proton")
-  add_subdirectory(third_party/proton/dialect)
 
   get_property(triton_libs GLOBAL PROPERTY TRITON_LIBS)
   get_property(triton_plugins GLOBAL PROPERTY TRITON_PLUGINS)
@@ -216,12 +223,6 @@ if(TRITON_BUILD_PYTHON_MODULE)
     ${triton_plugins}
 
     # mlir
-    MLIRAMDGPUDialect
-    MLIRNVVMDialect
-    MLIRNVVMToLLVMIRTranslation
-    MLIRGPUToNVVMTransforms
-    MLIRGPUToGPURuntimeTransforms
-    MLIRGPUTransforms
     MLIRIR
     MLIRControlFlowToLLVM
     MLIRBytecodeWriter
@@ -231,24 +232,33 @@ if(TRITON_BUILD_PYTHON_MODULE)
     MLIRSupport
     MLIRTargetLLVMIRExport
     MLIRMathToLLVM
-    MLIRROCDLToLLVMIRTranslation
-    MLIRGPUDialect
     MLIRSCFToControlFlow
     MLIRIndexToLLVM
-    MLIRGPUToROCDLTransforms
     MLIRUBToLLVM
 
     # LLVM
     LLVMPasses
-    LLVMNVPTXCodeGen
-    # LLVMNVPTXAsmPrinter
-    LLVMAMDGPUCodeGen
-    LLVMAMDGPUAsmParser
 
     Python3::Module
     pybind11::headers
-
   )
+
+  if(NOT IS_CPU_ONLY_BUILD)
+    list(APPEND TRITON_LIBRARIES
+      MLIRAMDGPUDialect
+      MLIRNVVMDialect
+      MLIRNVVMToLLVMIRTranslation
+      MLIRGPUToNVVMTransforms
+      MLIRGPUToGPURuntimeTransforms
+      MLIRGPUTransforms
+      MLIRROCDLToLLVMIRTranslation
+      MLIRGPUDialect
+      MLIRGPUToROCDLTransforms
+      LLVMNVPTXCodeGen
+      LLVMAMDGPUCodeGen
+      LLVMAMDGPUAsmParser
+    )
+  endif()
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR # Linux arm64
      CMAKE_SYSTEM_PROCESSOR MATCHES "arm64" OR # macOS arm64
      CMAKE_OSX_ARCHITECTURES MATCHES "arm64")  # also macOS arm64
@@ -318,7 +328,9 @@ if(NOT TRITON_BUILD_PYTHON_MODULE)
   foreach(CODEGEN_BACKEND ${TRITON_CODEGEN_BACKENDS})
     add_subdirectory(third_party/${CODEGEN_BACKEND})
   endforeach()
-  add_subdirectory(third_party/proton/dialect)
+  if(NOT IS_CPU_ONLY_BUILD)
+    add_subdirectory(third_party/proton/dialect)
+  endif()
 endif()
 
 find_package(Threads REQUIRED)
