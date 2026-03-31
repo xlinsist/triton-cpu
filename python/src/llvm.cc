@@ -13,7 +13,6 @@
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
-#include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Pass.h"
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -79,12 +78,18 @@ std::string ensureRiscv64MandatoryFeatures(const std::string &triple,
 
 std::string getHostCPUFeaturesString(const std::string &triple) {
   llvm::StringMap<bool> featureMap;
-  llvm::SubtargetFeatures features;
+  std::string features;
   if (llvm::sys::getHostCPUFeatures(featureMap)) {
-    for (const auto &kv : featureMap)
-      features.AddFeature(kv.getKey(), kv.getValue());
+    bool first = true;
+    for (const auto &kv : featureMap) {
+      if (!first)
+        features += ",";
+      first = false;
+      features += (kv.getValue() ? "+" : "-");
+      features += kv.getKey().str();
+    }
   }
-  return ensureRiscv64MandatoryFeatures(triple, features.getString());
+  return ensureRiscv64MandatoryFeatures(triple, features);
 }
 
 std::unique_ptr<TargetMachine>
