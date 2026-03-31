@@ -13,6 +13,7 @@
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/MC/SubtargetFeature.h"
 #include "llvm/Pass.h"
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -51,6 +52,39 @@ std::string getDefaultTargerOrProcessTriple() {
     triple = llvm::sys::getProcessTriple();
   }
   return triple;
+}
+
+std::string ensureRiscv64MandatoryFeatures(const std::string &triple,
+                                           std::string features) {
+  if (!llvm::StringRef(triple).starts_with("riscv64"))
+    return features;
+  auto hasFeature = [&](llvm::StringRef feature) {
+    return llvm::StringRef(features).contains(feature);
+  };
+  auto addFeature = [&](llvm::StringRef feature) {
+    if (hasFeature(feature))
+      return;
+    if (!features.empty())
+      features += ",";
+    features += feature.str();
+  };
+  addFeature("+m");
+  addFeature("+a");
+  addFeature("+f");
+  addFeature("+d");
+  addFeature("+c");
+  addFeature("+v");
+  return features;
+}
+
+std::string getHostCPUFeaturesString(const std::string &triple) {
+  llvm::StringMap<bool> featureMap;
+  llvm::SubtargetFeatures features;
+  if (llvm::sys::getHostCPUFeatures(featureMap)) {
+    for (const auto &kv : featureMap)
+      features.AddFeature(kv.getKey(), kv.getValue());
+  }
+  return ensureRiscv64MandatoryFeatures(triple, features.getString());
 }
 
 std::unique_ptr<TargetMachine>
@@ -430,8 +464,9 @@ void init_triton_llvm(py::module &&m) {
     if (!target) {
       throw std::runtime_error("target lookup error: " + error);
     }
+    auto features = getHostCPUFeaturesString(mod->getTargetTriple());
     std::unique_ptr<llvm::TargetMachine> machine{target->createTargetMachine(
-        mod->getTargetTriple(), llvm::sys::getHostCPUName(), "", {},
+        mod->getTargetTriple(), llvm::sys::getHostCPUName(), features, {},
         llvm::Reloc::PIC_)};
     mod->setDataLayout(machine->createDataLayout());
   });
@@ -457,8 +492,9 @@ void init_triton_llvm(py::module &&m) {
                 "lineno: " + std::to_string(error.getLineNo()));
           }
           auto triple = getDefaultTargerOrProcessTriple();
+          auto features = getHostCPUFeaturesString(triple);
           res = translateLLVMIRToASM(*module, triple,
-                                     llvm::sys::getHostCPUName().str(), "", {},
+                                     llvm::sys::getHostCPUName().str(), features, {},
                                      enable_fp_fusion, false, enable_fast_math);
         }
         return py::str(res);

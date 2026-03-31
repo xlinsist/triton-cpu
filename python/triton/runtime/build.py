@@ -56,6 +56,9 @@ def _build(name, src, srcdir, library_dirs, include_dirs, libraries):
     include_dirs = include_dirs + [srcdir, py_include_dir, *custom_backend_dirs]
     # for -Wno-psabi, see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=111047
     cc_cmd = [cc, src, "-O3", "-shared", "-fPIC", "-Wno-psabi", "-o", so]
+    if system == "Linux" and machine == "riscv64":
+        # Ensure RISC-V V extension and double-float ABI are explicitly enabled.
+        cc_cmd += ["-march=rv64imafdcv", "-mabi=lp64d"]
 
     libraries += ["gcc"]
     # Use dynamic lookup to load Python library on Mac

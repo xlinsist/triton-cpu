@@ -22,7 +22,6 @@ def min_dot_size(target: GPUTarget):
 VecLib = cpu.passes.ttcpuir.VecLib
 Ukernels = cpu.passes.ttcpuir.Ukernels
 
-
 @dataclass(frozen=True)
 class CPUOptions:
     # GPU-specific options are used in several places.
@@ -53,6 +52,7 @@ class CPUOptions:
 
     # TODO: We may introduce CPU-specific options like # of cores.
     ukernels: str = None
+    tttcir_path: Optional[str] = None
 
     def __post_init__(self):
         pass
@@ -122,6 +122,8 @@ class CPUBackend(BaseBackend):
         if "supported_fp8_dtypes" not in args:
             supported_fp8_dtypes = set(CPUOptions.supported_fp8_dtypes)
             args["supported_fp8_dtypes"] = tuple(sorted(supported_fp8_dtypes))
+        if "tttcir_path" not in args or not args.get("tttcir_path"):
+            args["tttcir_path"] = os.getenv("TTTCIR_PATH")
         return CPUOptions(**args)
 
     def pack_metadata(self, metadata):
@@ -182,8 +184,8 @@ class CPUBackend(BaseBackend):
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
         cpu.passes.ttcpuir.add_triton_cpu_canonicalizer(pm)
+        # print("warning: TritonCPU optimize_masks pass is disabled for now")
         cpu.passes.ttcpuir.add_optimize_masks(pm)
-        # print("mask optimization is currently disabled for CPU backend.")
         passes.common.add_canonicalizer(pm)
         if (ukernels := opt.get_ukernels()):
             # For further analysis simplification
@@ -221,7 +223,7 @@ class CPUBackend(BaseBackend):
         pm.run(mod)
         return mod
 
-    def make_llir(self, src, metadata, options):
+    def make_llir(self, src, metadata, options, context=None):
         # warp-specialization mutates num_warps
         num_warp_groups = src.get_int_attr("triton_gpu.num-warp-groups-per-cta")
         if num_warp_groups is not None:
@@ -229,7 +231,10 @@ class CPUBackend(BaseBackend):
         metadata["threads_per_warp"] = 1
         mod = src
         # TritonCPU -> LLVM-IR (MLIR)
-        pm = ir.pass_manager(mod.context)
+        ctx = context
+        if ctx is None:
+            ctx = mod.context
+        pm = ir.pass_manager(ctx)
         pm.enable_debug()
         if options.get_ukernels() == Ukernels.OneDNN:
             cpu.passes.ttcpuir.add_ukernels_to_onednn_llvmir(pm)
@@ -313,12 +318,27 @@ class CPUBackend(BaseBackend):
                 return f.read()
 
     def add_stages(self, stages, options):
-        stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
-        stages["ttcir"] = lambda src, metadata: self.make_ttcir(src, metadata, options)
-        stages["tttcir"] = lambda src, metadata: self.make_tttcir(src, metadata, options)
-        stages["llir"] = lambda src, metadata: self.make_llir(src, metadata, options)
-        stages["asm"] = lambda src, metadata: self.make_asm(src, metadata, options)
-        stages["so"] = lambda src, metadata: self.make_so(src, metadata, options)
+
+        if options.tttcir_path:
+            def load_and_run_llir(src, metadata):
+                print("Use tttcir from:", options.tttcir_path)
+                # ir.parse_mlir_module expects a file path. The C++ function handles opening and parsing.
+                mod = ir.parse_mlir_module(options.tttcir_path, src.context)
+                # The C++ side throws a runtime_error on failure, which propagates to Python.
+                return self.make_llir(mod, metadata, options, context=src.context)
+
+            stages["ttir"] = lambda src, metadata: src
+            stages["ttcir"] = lambda src, metadata: src
+            stages["tttcir"] = lambda src, metadata: src
+            stages["llir"] = load_and_run_llir
+        else:
+            stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
+            stages["ttcir"] = lambda src, metadata: self.make_ttcir(src, metadata, options)
+            stages["tttcir"] = lambda src, metadata: self.make_tttcir(src, metadata, options)
+            stages["llir"] = lambda src, metadata: self.make_llir(src, metadata, options)
+
+        # stages["asm"] = lambda src, metadata: self.make_asm(src, metadata, options)
+        # stages["so"] = lambda src, metadata: self.make_so(src, metadata, options)
 
     @functools.lru_cache()
     def hash(self):
