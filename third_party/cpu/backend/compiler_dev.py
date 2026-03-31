@@ -296,10 +296,8 @@ class CPUBackend(BaseBackend):
     def _llvm_target_features(self):
         if self.cpu_arch != "riscv64":
             return ""
-        # Force D extension for lp64d ABI and keep host-reported features.
-        features = {f"+{feat}" for feat in self.cpu_features}
-        features.update({"+m", "+a", "+f", "+d", "+c", "+v"})
-        return ",".join(sorted(features))
+        # Use a conservative feature set for broad GNU as compatibility on riscv64.
+        return "+m,+a,+f,+d,+c,+v"
 
     def make_asm(self, src, metadata, options):
         triple = llvm.get_cpu_tripple()

@@ -57,23 +57,9 @@ std::string ensureRiscv64MandatoryFeatures(const std::string &triple,
                                            std::string features) {
   if (!llvm::StringRef(triple).starts_with("riscv64"))
     return features;
-  auto hasFeature = [&](llvm::StringRef feature) {
-    return llvm::StringRef(features).contains(feature);
-  };
-  auto addFeature = [&](llvm::StringRef feature) {
-    if (hasFeature(feature))
-      return;
-    if (!features.empty())
-      features += ",";
-    features += feature.str();
-  };
-  addFeature("+m");
-  addFeature("+a");
-  addFeature("+f");
-  addFeature("+d");
-  addFeature("+c");
-  addFeature("+v");
-  return features;
+  // Use a conservative feature set for broad assembler compatibility.
+  // Some toolchains cannot parse newer extensions emitted from host probing.
+  return "+m,+a,+f,+d,+c,+v";
 }
 
 std::string getHostCPUFeaturesString(const std::string &triple) {
