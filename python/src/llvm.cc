@@ -77,17 +77,15 @@ std::string ensureRiscv64MandatoryFeatures(const std::string &triple,
 }
 
 std::string getHostCPUFeaturesString(const std::string &triple) {
-  llvm::StringMap<bool> featureMap;
   std::string features;
-  if (llvm::sys::getHostCPUFeatures(featureMap)) {
-    bool first = true;
-    for (const auto &kv : featureMap) {
-      if (!first)
-        features += ",";
-      first = false;
-      features += (kv.getValue() ? "+" : "-");
-      features += kv.getKey().str();
-    }
+  auto featureMap = llvm::sys::getHostCPUFeatures();
+  bool first = true;
+  for (const auto &kv : featureMap) {
+    if (!first)
+      features += ",";
+    first = false;
+    features += (kv.getValue() ? "+" : "-");
+    features += kv.getKey().str();
   }
   return ensureRiscv64MandatoryFeatures(triple, features);
 }
