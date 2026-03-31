@@ -118,7 +118,7 @@ def _build(name, src, srcdir, library_dirs, include_dirs, libraries):
         # Link it explicitly so JIT-produced .so can always resolve fp16 helper symbols.
         builtins_a = _find_riscv_compiler_rt_builtins()
         if builtins_a is not None:
-            cc_cmd.append(builtins_a)
+            cc_cmd += ["-Wl,--whole-archive", builtins_a, "-Wl,--no-whole-archive"]
     ret = subprocess.check_call(cc_cmd)
     if ret == 0:
         return so
