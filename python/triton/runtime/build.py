@@ -6,6 +6,7 @@ import sysconfig
 import os
 import shutil
 import subprocess
+import glob
 import setuptools
 
 
@@ -26,6 +27,13 @@ def _is_apple_clang():
     if res.returncode != 0:
         return False
     return "Apple clang" in res.stdout
+
+
+def _find_riscv_compiler_rt_builtins():
+    candidates = []
+    for root in ("/usr/lib", "/usr/lib64"):
+        candidates.extend(glob.glob(f"{root}/clang/*/lib/riscv64-*/libclang_rt.builtins.a"))
+    return sorted(candidates)[-1] if candidates else None
 
 
 def _build(name, src, srcdir, library_dirs, include_dirs, libraries):
@@ -105,6 +113,12 @@ def _build(name, src, srcdir, library_dirs, include_dirs, libraries):
         if system == "Linux" and machine in ("aarch64", "arm64"):
             # On Arm backend, some CPU (neoverse-v2) needs to be specified through -mcpu
             cc_cmd += ["-mcpu=native"]
+    if system == "Linux" and machine == "riscv64":
+        # Some riscv64 distributions ship __extendhfsf2 only in compiler-rt builtins.
+        # Link it explicitly so JIT-produced .so can always resolve fp16 helper symbols.
+        builtins_a = _find_riscv_compiler_rt_builtins()
+        if builtins_a is not None:
+            cc_cmd.append(builtins_a)
     ret = subprocess.check_call(cc_cmd)
     if ret == 0:
         return so
