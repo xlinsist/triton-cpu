@@ -47,7 +47,8 @@ class CPUOptions:
     enable_fp_fusion: bool = True
     max_num_imprecise_acc_default: int = 0
     enable_fast_math: bool = True
-    vec_lib: Optional[str] = 'libsleef'
+    vec_lib: Optional[str] = None
+    # vec_lib: Optional[str] = 'libsleef'
     # TODO: Try to enable it.
     sanitize_overflow: bool = False
 
