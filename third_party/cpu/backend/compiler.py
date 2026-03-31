@@ -291,7 +291,7 @@ class CPUBackend(BaseBackend):
     def _llvm_target_features(self):
         if self.cpu_arch != "riscv64":
             return ""
-        # Use a conservative feature set for broad GNU as compatibility on riscv64.
+        # Keep riscv64 codegen constrained to gcv only.
         return "+m,+a,+f,+d,+c,+v"
 
     def make_asm(self, src, metadata, options):
@@ -299,14 +299,24 @@ class CPUBackend(BaseBackend):
         features = self._llvm_target_features()
         return llvm.translate_to_asm(src, triple, self.cpu_name, features, [], options.enable_fp_fusion, False)
 
-    @staticmethod
-    def make_so(src, metadata, options):
+    def make_so(self, src, metadata, options):
         with tempfile.TemporaryDirectory() as tmpdir:
-            asm_path = os.path.join(tmpdir, "kernel.s")
-            Path(asm_path).write_text(src)
+            if self.cpu_arch == "riscv64":
+                # Bypass external assembler for riscv64 compatibility:
+                # emit object code directly from LLVM and only link here.
+                triple = llvm.get_cpu_tripple()
+                features = self._llvm_target_features()
+                obj = llvm.translate_to_asm(src, triple, "generic-rv64", features, [], options.enable_fp_fusion, True)
+                obj_path = os.path.join(tmpdir, "kernel.o")
+                Path(obj_path).write_bytes(obj)
+                input_path = obj_path
+            else:
+                asm_path = os.path.join(tmpdir, "kernel.s")
+                Path(asm_path).write_text(src)
+                input_path = asm_path
             lib_dirs = cpu_driver.library_dirs
             libs = ["m", "TritonCPURuntime", "sleef"]
-            so = _build("kernel", asm_path, tmpdir, lib_dirs, cpu_driver.include_dirs, libs)
+            so = _build("kernel", input_path, tmpdir, lib_dirs, cpu_driver.include_dirs, libs)
             with open(so, "rb") as f:
                 return f.read()
 
@@ -315,7 +325,8 @@ class CPUBackend(BaseBackend):
         stages["ttcir"] = lambda src, metadata: self.make_ttcir(src, metadata, options)
         stages["tttcir"] = lambda src, metadata: self.make_tttcir(src, metadata, options)
         stages["llir"] = lambda src, metadata: self.make_llir(src, metadata, options)
-        stages["asm"] = lambda src, metadata: self.make_asm(src, metadata, options)
+        if self.cpu_arch != "riscv64":
+            stages["asm"] = lambda src, metadata: self.make_asm(src, metadata, options)
         stages["so"] = lambda src, metadata: self.make_so(src, metadata, options)
 
     @functools.lru_cache()
