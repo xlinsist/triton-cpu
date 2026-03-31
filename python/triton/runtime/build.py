@@ -60,13 +60,22 @@ def _build(name, src, srcdir, library_dirs, include_dirs, libraries):
         # Constrain RISC-V build options to gcv + lp64d.
         cc_cmd += ["-march=rv64gcv", "-mabi=lp64d"]
 
-    libraries += ["gcc"]
+    # Keep compiler runtime helpers available for JIT-loaded shared objects.
+    # On some Linux targets (notably riscv64), fp16 conversion helpers such as
+    # __extendhfsf2 may only be provided by the shared libgcc runtime.
+    if system == "Linux":
+        cc_cmd += ["-shared-libgcc"]
+        libraries += ["gcc_s", "gcc"]
+    else:
+        libraries += ["gcc"]
     # Use dynamic lookup to load Python library on Mac
     if system == "Darwin":
         cc_cmd += ["-undefined", "dynamic_lookup"]
         # Don't use libgcc on clang + macos
         if "clang" in cc:
             libraries.remove("gcc")
+    # Preserve order while removing duplicates.
+    libraries = list(dict.fromkeys(libraries))
     cc_cmd += [f'-l{lib}' for lib in libraries]
     cc_cmd += [f"-L{dir}" for dir in library_dirs]
     cc_cmd += [f"-I{dir}" for dir in include_dirs if dir is not None]
