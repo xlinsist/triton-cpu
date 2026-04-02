@@ -71,5 +71,4 @@ def bench_softmax(size):
 
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for X in [2**i for i in range(10, 14, 1)]:
-        bench_softmax(X)
+    bench_softmax(2**10)
