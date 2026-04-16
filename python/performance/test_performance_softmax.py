@@ -3,7 +3,8 @@ import torch
 import triton
 import triton.language as tl
 import benchmark
-# from triton.backends.triton_shared.driver import CPUDriver
+benchmark.select_cpu_backend()
+
 @triton.jit
 def softmax_kernel(
     output_ptr,

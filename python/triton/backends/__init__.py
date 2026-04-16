@@ -45,6 +45,8 @@ def _discover_backends():
         driver = _load_module(name, os.path.join(root, name, 'driver.py'))
         backends[name] = Backend(name, _find_concrete_subclasses(compiler, BaseBackend),
                                  _find_concrete_subclasses(driver, DriverBase))
+    if "cpu" in backends:
+        backends.pop("triton_shared", None)
     return backends
 
 

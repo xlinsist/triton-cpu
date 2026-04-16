@@ -3,9 +3,7 @@ import torch
 import triton
 import triton.language as tl
 import benchmark
-# from triton.backends.triton_shared.driver import CPUDriver
-
-# triton.runtime.driver.set_active(CPUDriver())
+benchmark.select_cpu_backend()
 
 @triton.jit
 def _layer_norm_fwd_fused(
@@ -112,9 +110,8 @@ def bench_layernorm(size, provider):
     # forward pass
     y_tri = layer_norm(x, w_shape, weight, bias, eps, device)
 
-
 if __name__ == "__main__":
     benchmark.select_cpu_backend()
-    for X in [2**i for i in range(7, 10, 1)]:
+    for X in [2**i for i in range(6, 8, 1)]:
         for provider in ["triton"]:
             bench_layernorm(X, provider)
